@@ -3,22 +3,21 @@ Ballerina connector for Microsoft Outlook mail provides access to Microsoft Outl
 
 This module supports Ballerina SL Beta 2 version.
  
-## Obtaining tokens
+## Configuring connector
 ### Prerequisites
 * Microsoft Outlook Account
 * Azure Active Directory Access
-### Steps to generate tokens
+### Obtaining tokens
 Please follow [this link](https://docs.microsoft.com/en-us/graph/auth-v2-user#authentication-and-authorization-steps) and obtain the client ID, client secret and refresh token.
  
 ## Quickstart
-# Quickstart(s)
-## Send a message with an attachment
-### Step 1: Import MS Outlook Mail Package
+* Send a message with an attachment
+Step 1: Import MS Outlook Mail Package
 First, import the ballerinax/microsoft.outlook.mail module into the Ballerina project.
 ```ballerina
 import ballerinax/microsoft.outlook.mail;
 ```
-### Step 2: Configure the connection to an existing Azure AD app
+Step 2: Configure the connection to an existing Azure AD app
 You can now make the connection configuration using the OAuth2 refresh token grant config.
 ```ballerina
 outlookMail:Configuration configuration = {
@@ -33,7 +32,7 @@ outlookMail:Configuration configuration = {
 outlookMail:Client teamsClient = check new(configuration);
 
 ```
-### Step 3: send a message
+Step 3: send a message
 ```
 function testSendMessage() {
     log:printInfo("oneDriveClient->testSendMessage()");

@@ -15,17 +15,15 @@
 // under the License.
 
 import ballerina/http;
-import ballerina/log;
-import ballerina/lang.'int;
 import ballerina/io;
 
- 
+
 # Ballerina Client for microsoft outlook mail operations
 @display {
     label: "Microsoft Outlook.mail Client",
     iconPath: "MSOutlookMailLogo.svg"
 }
-public client class OutlookClient {
+public client class Client {
     http:Client httpClient;
     Configuration config;
 
@@ -50,8 +48,8 @@ public client class OutlookClient {
                                           @display {label: "Optional Query Parameters"} string? optionalUriParameters 
                                           = ()) returns @tainted error|stream<Message, error?> {
         string requestParams = optionalUriParameters is () ? "" : optionalUriParameters;
-        requestParams = folderId is string ? "/mailFolders/" + folderId + "/messages" + requestParams : "/messages" + 
-        requestParams;
+        requestParams = folderId is string ? (MAIL_FOLDER + folderId + SLASH_MESSAGES + requestParams) : (SLASH_MESSAGES + 
+        requestParams);
         json response = check self.httpClient->get(requestParams, targetType = json);
         MessageStream objectInstance = check new (response, self.config);
         stream<Message, error?> finalStream = new (objectInstance);
@@ -67,7 +65,7 @@ public client class OutlookClient {
     isolated remote function createMessage(@display {label: "Draft Message"} DraftMessage message,
                                            @display {label: "Folder ID"} string? folderId = ()) returns @tainted 
                                            Message|error {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId + "/messages" : "/messages";
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId + SLASH_MESSAGES) : SLASH_MESSAGES;
         http:Request request = new;
         request.setJsonPayload(message.toJson());
         request.setHeader("Content-Length", "0");
@@ -90,9 +88,9 @@ public client class OutlookClient {
                                         (), @display {label: "Body Content Format"} string? bodyContentType = ()) 
                                         returns 
                                         @tainted Message|error {
-        string optionalPrams = optionalUriParameters is () ? "" : optionalUriParameters;
-        string requestParams = folderId is string ? "/mailFolders/" + folderId : "";
-        requestParams += "/messages/" + messageId + "/" + optionalPrams;
+        string optionalPrams = optionalUriParameters is () ? EMPTY_STRING : optionalUriParameters;
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId) : EMPTY_STRING;
+        requestParams += MESSAGES + messageId + FORWARD_SLASH + optionalPrams;
         if (bodyContentType is string) {
             map<string> headers = {"Prefer": "outlook.body-content-type=" + bodyContentType};
             return check self.httpClient->get(requestParams, headers, Message);
@@ -111,7 +109,7 @@ public client class OutlookClient {
                                            @display {label: "Message Content"}MessageUpdateContent message, 
                                            @display {label: "Folder ID"} string? folderId = ()) 
                                             returns @tainted Message|error {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId + "/messages/" : "/messages/";
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId + MESSAGES) : MESSAGES;
         requestParams += messageId;
         http:Request request = new;
         request.setJsonPayload(message.toJson());
@@ -127,13 +125,12 @@ public client class OutlookClient {
     @display {label: "Delete Message"}
     isolated remote function deleteMessage(@display {label: "Messages ID"} string messageId,
                                            @display {label: "Folder ID"} string? folderId = ()) returns @tainted error? {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId + "/messages/" : "/messages/";
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId + MESSAGES) : MESSAGES;
         requestParams += messageId;
         http:Response response = check self.httpClient->delete(requestParams);
-        log:printInfo(requestParams);
         if (response.statusCode != http:STATUS_NO_CONTENT) {
-            fail error("Delete operation respond with status code:" + response.statusCode.toString()); //remove
-        } //check other errors body
+            return getErrorMessage(response);
+        }
     }
 
     # Send an existing draft message
@@ -142,15 +139,12 @@ public client class OutlookClient {
     # + return - If success returns null otherwise the relevant error
     @display {label: "Send Draft Messages"}
     isolated remote function sendDraftMessage(@display {label: "Message ID"} string messageId) returns @tainted error? {
-        string requestParams = "/messages/" + messageId + "/send";
+        string requestParams = MESSAGES + messageId + SEND;
         http:Request request = new;
         request.setHeader("Content-Length", "0");
-        http:Response response = check self.httpClient->post(requestParams, request, targetType = 
-        http:Response);
-        log:printInfo(requestParams);
+        http:Response response = check self.httpClient->post(requestParams, request);
         if (response.statusCode != http:STATUS_ACCEPTED) {
-            fail error("Send existing draft message operation failed with status code:" + 
-            response.statusCode.toString());
+            return getErrorMessage(response);
         }
     }
 
@@ -165,17 +159,14 @@ public client class OutlookClient {
                                         @display {label: "Destination Folder ID"}string destinationFolderId, 
                                         @display {label: "Folder ID"} string? folderId = ()) returns 
                                         @tainted error? {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId + "/messages/" : "/messages/";
-        requestParams += messageId + "/copy";
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId + MESSAGES) : MESSAGES;
+        requestParams += messageId + COPY;
         http:Request request = new;
         request.setHeader("Content-Type", "application/json");
         request.setJsonPayload({"destinationId": destinationFolderId});
-        log:printInfo(requestParams);
-        http:Response response = check self.httpClient->post(requestParams, request, targetType = 
-            http:Response);
+        http:Response response = check self.httpClient->post(requestParams, request);
         if (response.statusCode != http:STATUS_CREATED) {
-            fail error("Copy message operation failed with status code:" + 
-            response.statusCode.toString());
+            return getErrorMessage(response);
         }
     }
 
@@ -192,17 +183,15 @@ public client class OutlookClient {
                                             @display {label: "Email List"} string[] addressList, 
                                             @display {label: "Folder ID"} string? folderId = ()) 
                                             returns @tainted error? {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId + "/messages/" : "/messages/";
-        requestParams += messageId + "/forward";
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId + MESSAGES) : MESSAGES;
+        requestParams += messageId + FORWARD;
         http:Request request = new;
         request.setHeader("Content-Type", "application/json");
         ForwardParamsList parameterList = getRecipientListAsRecord(comment, addressList);
         request.setJsonPayload(parameterList.toJson());
-        log:printInfo(requestParams);
-        http:Response response = check self.httpClient->post(requestParams, request, targetType = 
-            http:Response);
+        http:Response response = check self.httpClient->post(requestParams, request);
         if (response.statusCode != http:STATUS_ACCEPTED) {
-            fail error("Forward message operation failed with status code:" + response.statusCode.toString());
+            return getErrorMessage(response);
         }
     }
 
@@ -213,16 +202,14 @@ public client class OutlookClient {
     @display {label: "Send Message"}
     isolated remote function sendMessage(@display {label: "Message"} MessageContent messageContent) returns 
                                          @tainted error? {
-        string requestParams = "/sendMail";
+        string requestParams = SEND_MAIL;
         http:Request request = new;
         messageContent.message.attachments = addOdataFileType(messageContent);
         request.setJsonPayload(messageContent.toJson());
-        log:printInfo(messageContent.toJsonString());
         request.setHeader("Content-Type", "application/json");
-        http:Response response = check self.httpClient->post(requestParams, request, targetType = 
-            http:Response);
+        http:Response response = check self.httpClient->post(requestParams, request);
         if (response.statusCode != http:STATUS_ACCEPTED) {
-            fail error("Send message operation failed with status code:" + response.statusCode.toString());
+            return getErrorMessage(response);
         }
     }
 
@@ -237,12 +224,11 @@ public client class OutlookClient {
                                             @display {label: "Folder ID"}string? folderId = (), 
                                             @display {label: "Child Folder ID List"} string[]? childFolderIds = ()) 
                                             returns @tainted stream<FileAttachment, error?>|error {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId : "";
-        requestParams += childFolderIds is () ? "" : (addChildFolderIds(childFolderIds));
-        requestParams += "/messages/" + messageId + "/attachments";
+        string requestParams = folderId is string ? MAIL_FOLDER + folderId : "";
+        requestParams += childFolderIds is () ? EMPTY_STRING : (addChildFolderIds(childFolderIds));
+        requestParams += MESSAGES + messageId + SLASH_ATTACHMENTS;
         json response = check self.httpClient->get(requestParams, targetType = json);
-        json[] attachmentList = let var value = response.value
-            in value is json ? <json[]>value : [];
+        json[] attachmentList = let var value = response.value in value is json ? <json[]>value : [];
         FileAttachment[] attachments = [];
         foreach json attachment in attachmentList {
             FileAttachment fileAttachment = check attachment.cloneWithType(FileAttachment);
@@ -262,7 +248,7 @@ public client class OutlookClient {
     isolated remote function createMailFolder(@display {label: "Display Name"} string displayName, 
                                               @display {label: "Is Hidden"} boolean? isHidden = ()) returns @tainted 
                                               MailFolder|error {
-        string requestParams = "/mailFolders";
+        string requestParams = SLASH_MAIL_FOLDERS;
         http:Request request = new;
         request.addHeader("Content-Type", "application/json");
         request.setJsonPayload({displayName: displayName, isHidden: false});
@@ -280,7 +266,7 @@ public client class OutlookClient {
                                                    @display {label: "Display Name"}string displayName, 
                                                    @display {label: "Is Hidden"} boolean? isHidden = ()) 
                                             returns @tainted MailFolder|error {
-        string requestParams = "/mailFolders/" + parentFolderId + "/childFolders";
+        string requestParams = MAIL_FOLDER + parentFolderId + SLASH_CHILD_FOLDERS;
         http:Request request = new;
         request.addHeader("Content-Type", "application/json");
         request.setJsonPayload({displayName: displayName, isHidden: false});
@@ -295,7 +281,7 @@ public client class OutlookClient {
     @display {label: "Get Mail Folder"} 
     isolated remote function getMailFolder(@display {label: "Mail Folder ID"} string mailFolderId) returns @tainted 
                                            MailFolder|error {
-        string requestParams = "/mailFolders/" + mailFolderId;
+        string requestParams = MAIL_FOLDER + mailFolderId;
         return check self.httpClient->get(requestParams, targetType = MailFolder);
     }
 
@@ -307,14 +293,14 @@ public client class OutlookClient {
     @display {label: "Delete Mail Folder"}
     isolated remote function deleteMailFolder(@display {label: "Mail Folder ID"} string mailFolderId) returns @tainted 
                                               error? {
-        string requestParams = "/mailFolders/" + mailFolderId;
-        http:Response response = check self.httpClient->delete(requestParams, targetType = http:Response);
+        string requestParams = MAIL_FOLDER + mailFolderId;
+        http:Response response = check self.httpClient->delete(requestParams);
         if (response.statusCode != http:STATUS_NO_CONTENT) {
-            fail error("Delete mail folder operation failed with status code:" + response.statusCode.toString());
+            return getErrorMessage(response);
         }
     }
 
-    # Add an attachment to a message
+    # Add an attachment that's smaller than 3MB to a message
     #
     # + messageId - The ID of the message  
     # + attachment - The File attachment detail 
@@ -327,9 +313,9 @@ public client class OutlookClient {
                                                @display {label: "Folder ID"} string? folderId = (), 
                                                @display {label: "Child Folder IDs"} string[]? childFolderIds = ()) 
                                                returns @tainted FileAttachment|error {
-        string requestParams = folderId is string ? "/mailFolders/" + folderId : "";
+        string requestParams = folderId is string ? MAIL_FOLDER + folderId : "";
         requestParams += childFolderIds is () ? "" : (addChildFolderIds(childFolderIds));
-        requestParams += "/messages/" + messageId + "/attachments";
+        requestParams += MESSAGES + messageId + SLASH_ATTACHMENTS;
         http:Request request = new;
         request.addHeader("Content-Type", "application/json");
         FileAttachment formattedAttachment = addOdataFileType(attachment)[0];
@@ -345,8 +331,8 @@ public client class OutlookClient {
     isolated remote function listMailFolders(@display {label: "Include Hidden Folders"} boolean? includeHiddenFolders = 
                                                 ()) 
                                              returns @tainted stream<MailFolder, error?>|error {
-        string requestParams = "/mailFolders";
-        requestParams += includeHiddenFolders is () ? "" : "/?includeHiddenFolders=" + includeHiddenFolders.toString();
+        string requestParams = SLASH_MAIL_FOLDERS;
+        requestParams += includeHiddenFolders is () ? EMPTY_STRING : (INCLUDE_HIDDEN_FOLDERS + includeHiddenFolders.toString());
         json response = check self.httpClient->get(requestParams, targetType = json);
         json[] mailFolderList = let var value = response.value
             in value is json ? <json[]>value : [];
@@ -370,8 +356,8 @@ public client class OutlookClient {
                                                   @display {label: "Include Hidden Folder"} boolean? 
                                                   includeHiddenFolders = ()) returns  @tainted 
                                                   stream<MailFolder, error?>|error {
-        string requestParams = "/mailFolders/" + parentFolderId + "/childFolders";
-        requestParams += includeHiddenFolders is () ? "" : "/?includeHiddenFolders=" + includeHiddenFolders.toString();
+        string requestParams = MAIL_FOLDER + parentFolderId + SLASH_CHILD_FOLDERS;
+        requestParams += includeHiddenFolders is () ? EMPTY_STRING : (INCLUDE_HIDDEN_FOLDERS + includeHiddenFolders.toString());
         json response = check self.httpClient->get(requestParams, targetType = json);
         json[] mailFolderList = let var value = response.value
             in value is json ? <json[]>value : [];
@@ -395,43 +381,74 @@ public client class OutlookClient {
     isolated remote function createMailSearchFolder(@display {label: "Parent Folder ID"} string parentFolderId, 
                                                     @display {label: "Mail Search Folder"} MailSearchFolder 
                                                     mailSearchFolder) returns @tainted MailSearchFolder|error {
-        string requestParams = "/mailFolders/" + parentFolderId + "/childFolders";
+        string requestParams = MAIL_FOLDER + parentFolderId + SLASH_CHILD_FOLDERS;
         http:Request request = new;
         request.addHeader("Content-Type", "application/json");
         json searchRequest = mailSearchFolder.toJson();
         searchRequest = check searchRequest.mergeJson({"@odata.type": "microsoft.graph.mailSearchFolder"});
-        log:printInfo(searchRequest.toString());
         request.setJsonPayload(searchRequest);
         return check self.httpClient->post(requestParams, request, targetType = MailSearchFolder);
     }
 
-    # Create an upload session that allows an the client to iteratively upload ranges of a file
+    # Create an upload session that allows an the client to iteratively upload a file that's lager than 3 MB and
+    # lesser than 150MB
     #
-    # + messageId - The ID of the message
-    # + attachmentName - The name of the attachment in the message
-    # + file - The file path or the array of bytes of the folder or file path
+    # + messageId - The ID of the message  
+    # + attachmentName - The name of the attachment in the message  
+    # + file - The file path or the array of bytes of the folder or file path  
+    # + fileSize - Size of the file is mandatory for io:Block stream uploading
     # + return - If success returns null otherwise the relevant error
     @display {label: "Add large File Attachment"}
-    isolated remote function addLargeFileAttachment(@display {label: "Message ID"} string messageId, 
-                                                    @display {label: "Attachment Name"} string attachmentName, 
-                                                    @display {label: "Mail Search Folder"} string|byte[] file) 
-                                                    returns @tainted error? {
-        byte[] content = file is string ? check io:fileReadBytes("tests/sample.pdf") : file;
+    isolated remote function addLargeFileAttachments(@display {label: "Message ID"} string messageId, 
+                                                 @display {label: "Attachment Name"} string attachmentName, 
+                                                 @display {label: "File Path Or Content"} stream<io:Block, error?>|string|byte[] file,
+                                                 @display {label: "File Size In Bytes"} int? fileSize = ()) 
+                                                 returns @tainted error? {
+        byte[] content = [];
+        string requestParams = MESSAGES + messageId + UPLOAD_SESSION;
+        http:Request request = new;
+        request.addHeader("Content-Type", "application/json");
+        if (file is stream<io:Block, error?>) {
+            AttachmentItemContent attachmentItem = {
+                attachmentType: FILE,
+                name: attachmentName,
+                size: fileSize ?: 0
+            };
+            request.setJsonPayload({AttachmentItem: attachmentItem}.toJson());
+            UploadSession session = check self.httpClient->post(requestParams, request, targetType = UploadSession);
+            return check uploadByteStream(file, fileSize, session); 
+        } else {
+            content = file is string ? check io:fileReadBytes(file) : file;
+        }
         AttachmentItemContent attachmentItem = {
-            attachmentType: "file",
+            attachmentType: FILE,
             name: attachmentName,
             size: content.length()
         };
-        string requestParams = "/messages/" + messageId + "/attachments/createUploadSession";
-        http:Request request = new;
-        request.addHeader("Content-Type", "application/json");
         request.setJsonPayload({AttachmentItem: attachmentItem}.toJson());
-        log:printInfo(requestParams.toString());
-        log:printInfo(attachmentItem.toString());
-        UploadSession session = check self.httpClient->post(requestParams, request, 
-        targetType = UploadSession);
-        log:printInfo(session.toString());
-        check uploadFile(content, session);
+        UploadSession session = check self.httpClient->post(requestParams, request, targetType = UploadSession);
+        check uploadByteArray(content, session); 
+    }
+
+    # Deletes an attachment
+    #
+    # + messageId - Message ID  
+    # + attachmentID - Attachment ID   
+    # + folderId - Folder ID where the file is saved in 
+    # + childFolderIds - Child folder IDs
+    # + return - If success returns null otherwise the relevant error
+    isolated remote function deleteAttachment(@display {label: "Message ID"} string messageId, 
+                                               @display {label: "File Attachment ID"} string attachmentID, 
+                                               @display {label: "Folder ID"} string? folderId = (), 
+                                               @display {label: "Child Folder IDs"} string[]? childFolderIds = ()) 
+                                               returns @tainted error? {
+        string requestParams = folderId is string ? (MAIL_FOLDER + folderId) : EMPTY_STRING;
+        requestParams += childFolderIds is () ? EMPTY_STRING : (addChildFolderIds(childFolderIds));
+        requestParams += MESSAGES + messageId + ATTACHMENTS + attachmentID;
+        http:Response response = check self.httpClient->delete(path=requestParams);
+        if (response.statusCode != http:STATUS_NO_CONTENT) {
+            return getErrorMessage(response);
+        }
     }
 
 }
@@ -446,102 +463,3 @@ public type Configuration record {
     http:ClientSecureSocket secureSocketConfig?;
 };
 
-isolated function uploadFile(byte[] file, UploadSession session) returns @tainted error? {
-    int currentPosition = 0;
-    int size = 3000000;
-    boolean isFinalRequest = false;
-    UploadSession uploadSession = session;
-    http:Client uploadClient = check new (session?.uploadUrl.toString(), {http1Settings: {chunking: http:CHUNKING_NEVER}});
-    log:printInfo(session?.uploadUrl.toString());
-    while !isFinalRequest {
-        http:Request request = new;
-        int endPosition = currentPosition + size;
-        if (endPosition > file.length()) {
-            endPosition = file.length();
-            isFinalRequest = true;
-        }
-        byte[] sliced = file.slice(currentPosition, endPosition);
-        request.setBinaryPayload(sliced);
-        request.addHeader("Content-Length", sliced.length().toString());
-        request.addHeader("Content-Type", "application/octet-stream");
-        request.addHeader("Content-Range", string `bytes ${currentPosition}-${endPosition - 1}/${file.length().toString()}`);
-        log:printInfo((check request.getHeader("Content-Range")).toString());
-        if (isFinalRequest) {
-            http:Response response = check uploadClient->put("", request);
-            if (response.statusCode != http:STATUS_CREATED) {
-                fail error((check response.getJsonPayload()).toString());
-            }
-            break;
-        }
-        uploadSession = check uploadClient->put("", request, targetType = UploadSession);
-        currentPosition = check 'int:fromString(uploadSession.nextExpectedRanges[0]);
-    }
-}
-
-public type URIParamsList record {|
-    int top?;
-    string 'select?;
-|};
-
-isolated function setOptionalUriParams(URIParamsList optionalUriParameters) returns @tainted string {
-    string request = "?";
-    json items = optionalUriParameters.toJson();
-    map<json> itemMap = <map<json>>items;
-    string[] keys = itemMap.keys();
-    boolean isFirst = true;
-    foreach string fieldKey in keys {
-        json value = itemMap.get(fieldKey);
-        if (isFirst) {
-            request = request + "$" + fieldKey + "=" + value.toString();
-        } else {
-            request = request + "&" + "$" + fieldKey + "=" + value.toString();
-        }
-        isFirst = false;
-    }
-    log:printInfo(request);
-    return request;
-
-}
-
-isolated function addOdataFileType(MessageContent|FileAttachment messageContent) returns FileAttachment[] {
-    FileAttachment[] attachments = [];
-    if (messageContent is FileAttachment) {
-        attachments.push(messageContent);
-    } else {
-        attachments = messageContent?.message?.attachments ?: [];
-    }
-    foreach int i in 0 ... attachments.length() {
-        FileAttachment attachment = attachments.remove(0);
-        FileAttachment attachmentTemp = {
-            contentBytes: attachment.contentBytes,
-            name: attachment.name,
-            contentType: attachment.contentType,
-            "@odata.type": "#microsoft.graph.fileAttachment"
-        };
-        if (attachment?.id is string) {
-            attachmentTemp.id = attachment?.id.toString();
-        }
-        if (attachment?.contentId is string) {
-            attachmentTemp.contentId = attachment?.contentId.toString();
-        }
-        if (attachment?.isInline is boolean) {
-            attachmentTemp.isInline = <boolean>attachment?.isInline;
-        }
-        if (attachment?.lastModifiedDateTime is string) {
-            attachmentTemp.lastModifiedDateTime = attachment?.lastModifiedDateTime.toString();
-        }
-        if (attachment?.size is int) {
-            attachmentTemp.size = <int>attachment?.size;
-        }
-        attachments.push(attachmentTemp);
-    }
-    return attachments;
-}
-
-isolated function addChildFolderIds(string[] childFoldersIds) returns string {
-    string requestParams = "";
-    foreach string ids in childFoldersIds {
-        requestParams += "/childFolders/" + ids;
-    }
-    return requestParams;
-}

@@ -1,11 +1,12 @@
 import ballerina/log;
 import ballerina/os;
 import ballerina/test;
+import ballerina/io;
 
-configurable string & readonly refreshUrl = os:getEnv("TOKEN_ENDPOINT");
+configurable string & readonly refreshUrl = os:getEnv("REFRESH_URL");
 configurable string & readonly refreshToken = os:getEnv("REFRESH_TOKEN");
-configurable string & readonly clientId = os:getEnv("APP_ID");
-configurable string & readonly clientSecret = os:getEnv("APP_SECRET");
+configurable string & readonly clientId = os:getEnv("CLIENT_ID");
+configurable string & readonly clientSecret = os:getEnv("CLIENT_SECRET");
 
 Configuration configuration = {
     clientConfig: {
@@ -17,12 +18,13 @@ Configuration configuration = {
     }
 };
 
-OutlookClient oneDriveClient = check new(configuration);
+Client oneDriveClient = check new(configuration);
 string messageId = "";
 string createdDraftId = "";
 string sentMessageId = "";
 string mailFolderId = "";
 string searchMailFolderId = "";
+string attachmentId = "";
 
 @test:Config {
     enable: true,
@@ -229,11 +231,8 @@ function testSendMessage() {
 }
 function testListAttachment() {
     log:printInfo("oneDriveClient->testListAttachment()");
-    URIParamsList optionalUriParameters = {
-        top: 8,
-        'select: "sender,subject,hasAttachments"
-    };
-    var output = oneDriveClient->listMessages(folderId = "sentitems",optionalUriParameters="?$select: \"sender,subject,hasAttachments\"");
+    var output = oneDriveClient->listMessages(folderId = "sentitems", 
+    optionalUriParameters="?$select: \"sender,subject,hasAttachments\"");
     if (output is stream<Message, error>) {
         int index = 0;
         error? e = output.forEach(function (Message queryResult) {
@@ -268,6 +267,7 @@ function testAddFileAttachment() {
     var result = oneDriveClient->addFileAttachment(sentMessageId, attachment, "sentitems");
     if result is FileAttachment {
         log:printInfo(result.toString());
+        attachmentId = result?.id.toString();
     } else {
          test:assertFail(msg = result.toString());
     }
@@ -393,9 +393,24 @@ function testCreateMailSearchFolder() {
     dependsOn: [tesCreateDraft]
 }
 function testAddLargeFileAttachment() returns @tainted error? {
-    log:printInfo("oneDriveClient->testAddLargeFileAttachment()");    
-    var output = oneDriveClient->addLargeFileAttachment(createdDraftId, "myFile.pdf", file = "tests/sample.pdf");
-    if output is error {
+    log:printInfo("oneDriveClient->TestAddLargeFileAttachments");  
+    stream<io:Block, io:Error?> blockStream = check
+    io:fileReadBlocksAsStream("outlookmail/tests/sample.pdf", 3000000);  
+    var output = oneDriveClient->addLargeFileAttachments(createdDraftId, "myFile.pdf", blockStream, fileSize = 10635049);
+    if (output is error) {
          test:assertFail(msg = output.toString()); 
     }
 }
+
+@test:Config {
+    enable: true,
+    dependsOn: [testAddFileAttachment]
+}
+function testDeleteAttachment() returns @tainted error? {
+    log:printInfo("oneDriveClient->testDeleteAttachment()");    
+    var output = oneDriveClient->deleteAttachment(sentMessageId, attachmentId);
+    if (output is error) {
+        test:assertFail(msg = output.toString()); 
+    }
+}
+    
